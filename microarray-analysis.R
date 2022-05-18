@@ -27,6 +27,7 @@ library(dplyr)
 library(tidyr)
 library(readr)
 library(biomaRt)
+library(data.table)
 options(stringsAsFactors = FALSE)
 
 # Set directory
@@ -155,67 +156,58 @@ rm()
 
 
 
-
 ########## 3. Annotation  --------------
 # Get the saved probe_table again
-probe_table = read.table("data/GSE54992/annotation_platform.tsv", header = T)
+probe_table = read.delim("data/GSE54992/annotation_platform.tsv")
+
 
 # Select Normalized by authors or normalized by you:
-# expr = read.table("data/GSE54992/table_expression_array.tsv", header= T)
-expr = read.table("intermediate/expr_final_norm.csv", header = T)
-
+# expr = fread("data/GSE54992/table_expression_array.tsv")
+expr = read.delim("intermediate/expr_final_norm.csv")
 
 
 
 # ----- a. Gene names from authors ----
 # Turn probe_names into a column
-expr <- cbind(ProbeName = rownames(expr), expr)
+expr <- cbind(probeName = rownames(expr), expr)
 rownames(expr) = NULL
 
 # Filter probe_table to get the gene_ID
 colnames(probe_table)
-probe_table <- probe_table[,c("ID", "Gene Symbol")]
+probe_table <- probe_table[,c("ID", "Gene.Symbol")]
 
 # Use left_join to get the names of the genes from probe_table
 expr <- expr %>% 
-  left_join(probe_table, by = c("ProbeName" = "ID"))
+  left_join(probe_table, by = c("probeName" = "ID"))
 
 # Separating using /// of "Gene.Symbol" e colocando em outra coluna ao lado (coluna "Delete")
 # deletando a coluna "Delete" com a função select(-Delete)
 expr <- expr %>% 
-  separate("Gene Symbol", c("geneName_gse", "Delete"), " /// ") %>% 
-  select(-Delete)
+  separate("Gene.Symbol", c("geneName_gse", "Delete"), " /// ") %>% 
+  dplyr::select(-Delete)
 
 expr <- expr[,c(1, ncol(expr), 2:(ncol(expr)-1))]
 
-# ----- a. Gene names from ensembl ----
 
-ensembl = useMart(biomart="ensembl",
-                  dataset="hsapiens_gene_ensembl")
+#### ----- 4. Collapse   --------------
 
-# Get the index platform at geo_accession viewer: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi
-# search on attributes
-attributes <- listAttributes(ensembl)
-platform_index = "affy_hg_u133_plus_2"
+source("source.R")
 
-annotation <- getBM(
-  attributes = c(
-    platform_index,
-    "ensembl_gene_id",
-    "gene_biotype",
-    "description",
-    "hgnc_symbol",
-    "chromosome_name"
-  ),
-  filters = platform_index,
-  values = rownames(expr),
-  mart = ensembl
-)
+# Collapsing
+expr <- collapse.rows(expr = expr, 
+                      probe.col = 'probeName', 
+                      gene.col = 'geneName_gse', 
+                      method = 'maxMean')
 
-table(duplicated(annotation$affy_hugene_2_0_st_v1))
-annotation <- annotation[!duplicated(annotation$affy_hugene_2_0_st_v1),]
-colnames(annot)[1] <- "Probe"
-annot[] <- lapply(annot, as.character)
+expr = expr[expr$geneName_gse != "", ] 
+length(unique(expr$geneName_gse))
+expr = expr[,-2]
+
+write.table(expr, 
+            "intermediate/expr_table_collapsed.tsv", 
+            sep = "\t", 
+            row.names = FALSE, 
+            col.names = TRUE)
 
 
 
