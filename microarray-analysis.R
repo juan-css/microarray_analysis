@@ -26,6 +26,7 @@ library(arrayQualityMetrics)
 library(dplyr)
 library(tidyr)
 library(readr)
+library(biomaRt)
 options(stringsAsFactors = FALSE)
 
 # Set directory
