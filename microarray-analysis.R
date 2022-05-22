@@ -27,11 +27,15 @@ library(readr)
 library(biomaRt)
 library(data.table)
 library(limma)
+library(matrixStats)
 options(stringsAsFactors = FALSE)
 
 # Plots
 library(ggplot2)
 library(ggrepel)
+library(ComplexHeatmap)
+library(circlize)
+library(gridtext)
 
 # Set directory
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
@@ -39,18 +43,18 @@ dir.create("data")
 setwd("./data")
 
 # Baixando dados do estudo GSE54992
-gse_ID <- "GSE54992"
-gpl_ID <- "GPL570"
+gse_ID = "GSE54992"
+gpl_ID = "GPL570"
 path_gse = paste0('data/', gse_ID, '/')
 
 #baixando os dados do GEO
-gse <- getGEO(gse_ID)
+gse = getGEO(gse_ID)
 
 # baixando dados brutos do estudo (.CEL)
 getGEOSuppFiles(gse_ID)
 
 # Salvando os dados de expressão em um arquivo
-table_expression <- exprs(gse[[1]])
+table_expression = exprs(gse[[1]])
 write.table(table_expression, 
             "GSE54992/table_expression_array.tsv", 
             sep = "\t", 
@@ -84,7 +88,7 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 untar(tarfile = paste0(path_gse,'GSE54992_RAW.tar'), 
       exdir = paste0(path_gse,'GSE54992_RAW'))
 
-cel_files <- list.files(path = paste0(path_gse,'GSE54992_RAW'),
+cel_files = list.files(path = paste0(path_gse,'GSE54992_RAW'),
                         pattern = ".cel", 
                         ignore.case = TRUE, 
                         recursive = TRUE, 
@@ -94,7 +98,7 @@ cel_files <- list.files(path = paste0(path_gse,'GSE54992_RAW'),
 rawdata <- ReadAffy(filenames = cel_files)
 
 # Create a directory to save AQM pre normalization (non-normalized)
-dir_aqm_non_norm <- paste0("intermediate/aqm_teste/", 
+dir_aqm_non_norm = paste0("intermediate/aqm_teste/", 
                            gse_ID, 
                            "_", 
                            gpl_ID, 
@@ -106,7 +110,7 @@ arrayQualityMetrics(expressionset = rawdata,
                     force = TRUE, 
                     do.logtransform = TRUE)
 
-raw_expr <- rawdata@assayData[["exprs"]]
+raw_expr = rawdata@assayData[["exprs"]]
 
 # Check index.html file
 
@@ -118,12 +122,12 @@ raw_expr <- rawdata@assayData[["exprs"]]
 # https://stackoverflow.com/questions/25581769/creating-eset-object-from-preprocessed-expression-matrix
 
 # Using RMA to normalize the data 
-expr_norm <- rma(rawdata)
+expr_norm = rma(rawdata)
 
 
 
 #### ----- c. Run AQM pos normalization -----####
-dir_aqm_norm <- paste0("intermediate/aqm_teste/",
+dir_aqm_norm = paste0("intermediate/aqm_teste/",
                        gse_ID, 
                        "_",
                        gpl_ID, 
@@ -135,7 +139,7 @@ arrayQualityMetrics(expressionset = expr_norm,
                     force = TRUE)
 
 # Save the normalized expression file, if case:
-expr_norm_final <- expr_norm@assayData[["exprs"]]
+expr_norm_final = expr_norm@assayData[["exprs"]]
 write.table(expr_norm_final,
             "intermediate/expr_final_norm.csv",
             sep = "\t",
@@ -150,25 +154,25 @@ write.table(expr_norm_final,
 
 
 # ----- d. Remove outliers, renorm and control quality ----- ####
-dir_aqm_renorm <- paste0("intermediate/aqm_teste/", 
+dir_aqm_renorm = paste0("intermediate/aqm_teste/", 
                          gse_ID, 
                          "_",
                          gpl_ID, 
                          "_AQM_renorm")
 
 # Creating a vector with the outlier samples (see the table in the index)
-outlier_samples <- c("GSE54992_RAW/XXXXXX_OUTLIER_SAMPLE_NAME.CEL.gz", 
+outlier_samples = c("GSE54992_RAW/XXXXXX_OUTLIER_SAMPLE_NAME.CEL.gz", 
                      "GSE54992_RAW/XXXXXX_OUTLIER_SAMPLE_NAME.CEL.gz", 
                      "GSE54992_RAW/XXXXXX_OUTLIER_SAMPLE_NAME.CEL.gz")
 
 # Removing the outlier samples from cel_files (see the index and check the sample names)
-cel_files2 <- cel_files[!cel_files %in% outlier_samples]
+cel_files2 = cel_files[!cel_files %in% outlier_samples]
 
 # Get the AffyBatch from cel_files without outliers (pode pular)
-rawdata2 <- ReadAffy(filenames = cel_files2)
+rawdata2 = ReadAffy(filenames = cel_files2)
 
 # Renorm without outliers
-expr_renorm <- rma(rawdata2)
+expr_renorm = rma(rawdata2)
 
 # Check the AQM again
 arrayQualityMetrics(expressionset = expr_renorm, 
@@ -176,7 +180,7 @@ arrayQualityMetrics(expressionset = expr_renorm,
                     force = TRUE)
 
 # Save the renormalized expression data  
-expr_renorm_final <- expr_renorm@assayData[["exprs"]]
+expr_renorm_final = expr_renorm@assayData[["exprs"]]
 write.table(expr_renorm_final, 
             "intermediate/expr_final_norm_noOutlier.csv",
             sep = "\t",
@@ -201,24 +205,24 @@ expr = read.delim("intermediate/expr_final_norm.csv")
 
 # ----- a. Gene names from authors ----
 # Turn probe_names into a column
-expr <- cbind(probeName = rownames(expr), expr)
+expr = cbind(probeName = rownames(expr), expr)
 rownames(expr) = NULL
 
 # Filter probe_table to get the gene_ID
 colnames(probe_table)
-probe_table <- probe_table[,c("ID", "Gene.Symbol")]
+probe_table = probe_table[,c("ID", "Gene.Symbol")]
 
 # Use left_join to get the names of the genes from probe_table
-expr <- expr %>% 
+expr = expr %>% 
   left_join(probe_table, by = c("probeName" = "ID"))
 
 # Separating using /// of "Gene.Symbol" e colocando em outra coluna ao lado (coluna "Delete")
 # deletando a coluna "Delete" com a função select(-Delete)
-expr <- expr %>% 
+expr = expr %>% 
   separate("Gene.Symbol", c("geneName_gse", "Delete"), " /// ") %>% 
   dplyr::select(-Delete)
 
-expr <- expr[,c(1, ncol(expr), 2:(ncol(expr)-1))]
+expr = expr[,c(1, ncol(expr), 2:(ncol(expr)-1))]
 
 
 #### ----- 4. Collapse   --------------
@@ -226,7 +230,7 @@ expr <- expr[,c(1, ncol(expr), 2:(ncol(expr)-1))]
 source("source.R")
 
 # Collapsing
-expr <- collapse.rows(expr = expr, 
+expr = collapse.rows(expr = expr, 
                       probe.col = 'probeName', 
                       gene.col = 'geneName_gse', 
                       method = 'maxMean')
@@ -271,7 +275,7 @@ expr = expr[,colnames(expr) %in% metadata$geo_accession]
 
 # reorder expression matrix according to the order of the samplesinfo object
 # VERY IMPORTANT!! ALWAYS DO THIS!!
-expr <- expr[, metadata$geo_accession]
+expr = expr[, metadata$geo_accession]
 
 # Check if all are in the same order
 all(metadata$Sample %in% colnames(expr))
@@ -318,15 +322,19 @@ fit = contrasts.fit(fit, contrast.mat)
 fit = eBayes(fit)
 
 
-# Comparing classes
+# Comparing classes (Don't set p.value and lfc to get whole list)
 degs.test1 = topTable(fit, coef = "test1", 
                       number = nrow(expr),
                       adjust.method = 'fdr', 
-                      p.value=0.05, 
-                      lfc=log2(1))
+                      p.value=1, # get the whole list
+                      lfc=0) # get the whole list
 # deg.test2 = topTable(fit, coef = "test2", number = nrow(expr),
 #                      adjust.method = 'fdr', p.value=0.05, lfc=log2(1))
 
+#### Define DEGs
+degs.test1['deg_status'] = 'no'
+degs.test1$deg_status[degs.test1$logFC > 1 & degs.test1$adj.P.Val < 0.05] = "UP"
+degs.test1$deg_status[degs.test1$logFC < -1 & degs.test1$adj.P.Val < 0.05] = "DOWN"
 
 dim(degs.test1)[1]
 dir.create('results/degs')
@@ -338,18 +346,15 @@ write.table(degs.test1,
 
 
 
+
+
 #### ----- 5. PLOTs   --------------
 
 # ---- a. Volcano Plot ----
 
-#### Define DEGs
-degs.test1['deg_status'] <- 'no'
-degs.test1$deg_status[degs.test1$logFC > 1 & degs.test1$adj.P.Val < 0.05] <- "UP"
-degs.test1$deg_status[degs.test1$logFC < -1 & degs.test1$adj.P.Val < 0.05] <- "DOWN"
-
 # Set colors
-mycolors <- c("royalblue3", "red2", "lightgrey")
-names(mycolors) <- c("DOWN", "UP", "no")
+mycolors = c("royalblue3", "red2", "lightgrey")
+names(mycolors) = c("DOWN", "UP", "no")
 
 # Theme
 cleanup = 
@@ -368,7 +373,7 @@ cleanup =
   )
 
 # Set the labels
-degs.test1$label <- row.names(degs.test1)
+degs.test1$label = row.names(degs.test1)
 degs.test1$label[degs.test1$deg_status == "no"] <- NA
 
 # Plot
@@ -393,4 +398,209 @@ ggplot(degs.test1, aes(
   cleanup
 dev.off()
 
+
+
+
+
+
+# ---- b. Relative Expression of one Gene (Boxplot)----
+
+gene_expr = expr["P2RX7",]
+gene_expr = data.frame(
+  Class=c(metadata$Class),
+  Score=c(as.character(gene_expr[1,]))
+)
+
+# find means of sample scores
+gene_expr$Score = as.numeric(gene_expr$Score)
+
+class_means = vector()
+for (j in unique(gene_expr$Class)) {
+  class_means = c(class_means,
+                  mean(gene_expr[gene_expr$Class == 'HD',
+                                 "Score"]))
+}
+names(class_means) = unique(gene_expr$Class)
+class_means = class_means[order(class_means)]
+
+
+# make color for each class, with control class as light blue
+groups = unique(gene_expr$Class)
+palette = c("#86cce0", 
+             "#4da566", 
+             "#d67048", 
+             "#b59519",
+             "#FDBF6F",
+             "#FF7F00",
+             "#CAB2D6",
+             "#6A3D9A")
+
+if (length(groups) > length(palette)) {
+  palette <- rep(palette, ceiling(length(groups)/length(palette)))
+}
+groups_coloured = palette[1:length(groups)]
+
+control_lab = 'HC'
+
+if (!missing(control_lab)) {
+  if (!(control_lab %in% gene_expr$Class)) {
+    
+    stop("Please provide control label that features in the sample data")
+  } else {
+    
+    groups_reordered = c(control_lab,
+                          as.character(groups[-grep(control_lab,
+                                                    groups)]))
+    
+    names(groups_coloured) = groups_reordered
+  }
+}
+
+
+#### Plot scores as boxplot graphs
+pdf("results/gene_boxplot.pdf")
+ggplot2::ggplot(data = gene_expr,
+                ggplot2::aes_string(y = "Score",
+                                    x = "Class",
+                                    fill = "Class")) +
+  ggplot2::geom_boxplot(outlier.shape = NA) +
+  ggplot2::stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 23,
+    size = 6
+  ) +
+  ggplot2::labs(title = NULL,
+                x = NULL,
+                y = "Normalized expression") +
+  ggplot2::theme(legend.position = "null") +
+  ggplot2::scale_x_discrete(limits = names(class_means)) +
+  ggplot2::geom_jitter(
+    shape = 16,
+    position = ggplot2::position_jitter(0.1),
+    size = 2,
+    color = "grey10",
+    alpha = 0.7
+  ) +
+  ggplot2::theme(
+    axis.line = ggplot2::element_line(size = 0.8,
+                                      linetype = "solid"),
+    axis.title =
+      ggplot2::element_text(size = 14),
+    panel.grid.major =
+      ggplot2::element_line(linetype = "blank"),
+    panel.grid.minor =
+      ggplot2::element_line(linetype = "blank"),
+    plot.title = ggplot2::element_text(size = 18),
+    panel.background =
+      ggplot2::element_rect(fill = "white"),
+    axis.text.x =
+      ggplot2::element_text(angle = 0, hjust = 0.5, vjust = 0.2),
+    axis.title.y = 
+      ggplot2::element_text(vjust = 2),
+    legend.text =
+      ggplot2::element_text(size = 14),
+    axis.text = ggplot2::element_text(size = 14)
+  ) +
+  ggplot2::scale_fill_manual(values = groups_coloured)
+dev.off()
+
+
+
+
+
+
+# ---- c. Heatmap samples for some genes (Z-score) ----
+
+# Set the genes of interest
+gene_list = c(
+  'P2RX1',
+  'P2RX2',
+  'P2RX3',
+  'P2RX4',
+  'P2RX5',
+  'P2RX6',
+  'P2RX7'
+)
+
+# Check if your genes has expression signal
+check = gene_list[!gene_list %in% row.names(expr)]
+if (length(check) == 0) {
+  print('All target genes are in expression data')
+} else{
+  print(c('Please check the following genes:', check))
+}
+
+# Check if your genes has expression signal
+check = gene_list[!gene_list %in% row.names(degs.test1)]
+if (length(check) == 0) {
+  print('All target genes are in DGE data')
+} else{
+  print(c('Please check the following genes:', check))
+}
+
+# filter their expression to another table
+expr_Heat = {}
+for(i in gene_list){
+  temp = expr[row.names(expr) == i,]
+  expr_Heat = rbind(expr_Heat, temp)
+}
+
+# Calculate Z-score for each sample
+expset_zscore = (expr_Heat-rowMeans(expr_Heat))/(rowSds(as.matrix(expr_Heat)))
+
+
+# Set Heatmap colors for logFC 
+col_logFC = 
+  colorRamp2(c(-2, -1, 0, 1, 2),
+             c('#217847', '#87dead', 'lightgrey', '#fec44f', '#d95f0e')
+)
+
+# Set Heatmap colors for significance
+col_adjP =
+  colorRamp2(c(0, 2, 4, 6, 8, 10),
+             c(
+               '#ffffff',
+               '#d9d9d9',
+               '#b3b3b3',
+               '#8c8c8c',
+               '#666666',
+               '#404040'
+             ))
+
+# Set DEGs table
+deg_Heat = {}
+for(i in gene_list){
+  temp = degs.test1[row.names(degs.test1) == i,]
+  deg_Heat = rbind(deg_Heat, temp)
+}
+
+# Set DEG annotation
+right_notes = rowAnnotation(
+  logFC = deg_Heat$logFC,
+  log10P.adjust = -log10(deg_Heat$adj.P.Val),
+  col = list(logFC = col_logFC,
+             log10P.adjust = col_adjP),
+  simple_anno_size = unit(2, 'mm')
+)
+
+ht = Heatmap(
+  as.matrix(expset_zscore),
+  row_order = sort(gene_list, decreasing = T), #DEFINIR A ORDEM DO HEATMAP ROW
+  row_km = 2, #CLUSTERIZAR O HEATMAP ROW
+  column_gap = unit(1.5, 'mm'),
+  row_gap = unit(1.5, 'mm'),
+  rect_gp = gpar(col = "white", lwd = 1.9),
+  row_names_gp = gpar(fontsize = 12, fontface = 'italic'),
+  column_names_gp = gpar(fontsize = 12),
+  name = 'sd from the mean',
+  column_dend_reorder = F,
+  column_split = factor(c(rep(1,6),rep(2,9)), levels = as.character(c(1,2))),
+  right_annotation = right_notes,
+  show_parent_dend_line = F
+)
+
+pdf("results/heatmap_by_samples.pdf")
+draw(ht)
+dev.off()
 
