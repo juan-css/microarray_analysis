@@ -56,7 +56,7 @@ getGEOSuppFiles(gse_ID)
 # Salvando os dados de expressão em um arquivo
 table_expression = exprs(gse[[1]])
 write.table(table_expression, 
-            "GSE54992/table_expression_array.tsv", 
+            paste0(gse_ID, "/table_expression_array.tsv"), 
             sep = "\t", 
             col.names = TRUE, 
             row.names = FALSE)
@@ -64,13 +64,13 @@ write.table(table_expression,
 # visualizar o phenodata
 metadata <- pData(phenoData(gse[[1]]))
 write.table(metadata, 
-            "GSE54992/metadata.tsv", 
+            paste0(gse_ID, "/metadata.tsv"), 
             sep = "\t")
 
 # obtendo dados da plataforma
 probe_table <- gse[[1]]@featureData@data
 write.table(probe_table, 
-            "GSE54992/annotation_platform.tsv",
+            paste0(gse_ID, "/annotation_platform.tsv"),
             sep = "\t")
 
 
@@ -85,10 +85,10 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 #### ----- a. Run AQM pre normalization -----####
 
 # Find studies with CEL files (the file needs)
-untar(tarfile = paste0(path_gse,'GSE54992_RAW.tar'), 
-      exdir = paste0(path_gse,'GSE54992_RAW'))
+untar(tarfile = paste0(path_gse, gse_ID, '_RAW.tar'), 
+      exdir = paste0(path_gse, gse_ID, '_RAW'))
 
-cel_files = list.files(path = paste0(path_gse,'GSE54992_RAW'),
+cel_files = list.files(path = paste0(path_gse, gse_ID, '_RAW'),
                         pattern = ".cel", 
                         ignore.case = TRUE, 
                         recursive = TRUE, 
@@ -194,7 +194,7 @@ rm(list=ls())
 
 ########## 3. Annotation  --------------
 # Get the saved probe_table again
-probe_table = read.delim("data/GSE54992/annotation_platform.tsv")
+probe_table = read.delim(paste0("data/", gseID, "/annotation_platform.tsv"))
 
 
 # Select Normalized by authors or normalized by you:
@@ -255,7 +255,7 @@ rm(list=ls())
 # ---- a. Set-up expression and metadata ----
 
 # Filter the samples to the samples you want
-metadata = read.delim("data/GSE54992/metadata.tsv")
+metadata = read.delim("data/", gseID, "/metadata.tsv")
 
 # Select the class you want to compare
 table(metadata$disease.state.ch1)
